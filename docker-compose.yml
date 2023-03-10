@@ -1,0 +1,51 @@
+version: "3"
+services:
+  front:
+    build: ./frontend
+    ports:
+      - "12381:3000"
+    volumes:
+      - ./frontend/my-app:/app
+    environment:
+      - REACT_APP_SERVER_HOST=https://aiapi.fburon.cl
+      - TZ=America/Santiago
+  prod:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    ports:
+      - "12382:80"
+    volumes:
+      - ./frontend/my-app/build:/usr/share/nginx/html
+  back:
+    build: ./backend
+    ports:
+      - "12380:5000"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+    restart: always
+  db:
+    build:
+      context: ./db/
+      dockerfile: Dockerfile
+    container_name: postgres
+    ports:
+      - '12332:5432'
+    env_file:
+      - db.env
+    restart: always
+    volumes:
+      - db_data:/var/lib/postgresql/data
+  metabase:
+    ports:
+        - '12345:3000'
+    container_name: metabase
+    image: metabase/metabase
+    volumes:
+      - ./metabase/metabase.db:/metabase.db
+volumes:
+  db_data:
