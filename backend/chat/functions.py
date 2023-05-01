@@ -3,9 +3,10 @@ import os
 import uuid
 import json
 
+# Models: text-davinci-002-render-sha gpt-4
+
 base_url = "https://chat.openai.com/backend-api/"
 auth_token = os.environ['AUTH_TOKEN']
-cookie_token = os.environ['COOKIE_TOKEN']
 puid_user = os.environ['PUID_USER']
 # headers = {
 #     f'authorization': f'Bearer {auth_token}',
@@ -13,15 +14,16 @@ puid_user = os.environ['PUID_USER']
 # }
 
 headers = {
-    "cookie": f"token={cookie_token}; _puid={puid_user}",
+    "cookie": f"_puid={puid_user}",
     "authorization": f"Bearer {auth_token}"
 }
 
 
 def gpt_conversations():
-    url = base_url + "conversations"+"?offset=0&limit=50"
+    url = base_url + "conversations"+"?offset=0&limit=100"
     try:
         response = requests.get(url, headers=headers)
+        print(response.json())
         return response.json()
     except Exception as e:
         return {"error": str(e)}

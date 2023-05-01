@@ -223,6 +223,7 @@ const Home = () => {
     }
 
     function scrollToBottom() {
+        clearInterval(scrollInterval);
         const chatbox = document.querySelector('.chatbox .modal-body');
         let currentPosition = chatbox.scrollTop;
         let previousPosition = currentPosition; // Almacenar la posición anterior de desplazamiento
