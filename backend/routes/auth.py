@@ -1,11 +1,7 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
-from models.contact import Users, Preguntas, Requests, LogoutToken
+from flask import Blueprint, request, jsonify
+from models.contact import Users
 from utils.db import db
-from werkzeug.exceptions import Unauthorized
-import logging 
-import os, jwt, bcrypt, datetime
-import time
-from functools import wraps
+import bcrypt
 import chat.functions as chat
 from routes.decorators import *
 auth = Blueprint("auth", __name__)
