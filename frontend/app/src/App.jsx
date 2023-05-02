@@ -1,10 +1,11 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Login from "./pages/login.js";
-import Home from "./pages/home.js";
-import Admin from "./pages/admin.js";
+import Login from "./pages/login";
+import Home from "./pages/home";
+import Admin from "./pages/admin";
 
 function App() {
-  return (
+  return(
+  <>
     <div className="App">
       <Router>
         <Routes>
@@ -14,7 +15,8 @@ function App() {
         </Routes>
       </Router>
     </div>
-  );
+  </>
+  )
 }
 
 export default App;

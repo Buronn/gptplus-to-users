@@ -1,4 +1,4 @@
-const Swal = require('sweetalert2')
+import Swal from 'sweetalert2';
 const Feature = () => {
     Swal.fire({
         title: 'Features',

@@ -6,8 +6,8 @@ import { BsRobot } from "react-icons/bs";
 import { MdOutlineMonitorHeart } from "react-icons/md";
 import { useState } from "react";
 import Modal from "react-bootstrap/Modal";
-import * as api from "../utils/api.js";
-const Swal = require("sweetalert2");
+import * as api from "../utils/api.jsx";
+import * as Swal from 'sweetalert2' 
 
 function Navbar() {
   const [fullscreen, setFullscreen] = useState(true);

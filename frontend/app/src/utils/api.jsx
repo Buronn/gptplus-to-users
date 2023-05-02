@@ -1,4 +1,4 @@
-import { CONFIG } from '../config.js';
+import { CONFIG } from '../config.jsx';
 
 const headers = {
     'Content-Type': 'application/json',

@@ -1,4 +1,4 @@
-const Swal = require('sweetalert2')
+import Swal from 'sweetalert2';
 
 export function Error(message) {
     return Swal.fire({

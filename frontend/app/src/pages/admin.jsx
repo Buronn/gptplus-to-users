@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import * as api from '../utils/api.js';
-import { DashboardDetails, Navbar } from '../components';
+import * as api from '../utils/api.jsx';
+import { DashboardDetails, Navbar } from '../components/index.jsx';
 import Row from 'react-bootstrap/Row';
 import Col from 'react-bootstrap/Col';
 import Container from 'react-bootstrap/Container';

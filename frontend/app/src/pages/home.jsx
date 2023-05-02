@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import * as api from "../utils/api.js";
+import * as api from "../utils/api.jsx";
 import "./home.css";
 import ReactMarkdown from 'react-markdown'
 import remarkCodeFrontmatter from 'remark-code-frontmatter'
 import hljs from "highlight.js";
-const Swal = require('sweetalert2');
+import Swal from 'sweetalert2' 
 
 const Home = () => {
     const [loggedIn, setLoggedIn] = useState(false);
