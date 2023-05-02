@@ -1,0 +1,44 @@
+{% extends 'layout.html' %}
+
+{% block title %}
+  Flask SQLAlchemy CRUD | Home 
+{% endblock %}
+
+{% block body %}
+
+    <!-- FORM -->
+    <div class="row">
+
+    <div class="col-md-5 p-5">
+      <!-- MESSAGE -->
+      {% include 'partials/_message.html' %}
+
+      <!-- FORM -->
+      {%  include 'partials/_taskForm.html' %}
+    </div>
+
+    <!-- contacts list -->
+    <div class="col-md-7">
+      {% for contact in contacts %}
+        <div class="card mb-1 bg-black text-white">
+          <div class="card-body py-2 px-3">
+            <div class="d-flex justify-content-between">
+              <h5 class="card-title h6">{{ contact.fullname}}</h5>
+              <div>
+                <a href="{{ url_for('contacts.update', id=contact.id) }}" class="btn btn-dark btn-sm rounded-0">Edit</a>
+                <a href="{{ url_for('contacts.delete', id=contact.id) }}" class="btn btn-danger btn-sm rounded-0">Delete</a>
+              </div>
+            </div>
+            <p class="card-text">{{ contact.email }}</p>
+            <p class="card-text">{{ contact.phone }}</p>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+    </div>
+
+
+
+
+{% endblock %}
