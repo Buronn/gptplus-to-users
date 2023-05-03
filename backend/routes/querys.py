@@ -1,33 +1,42 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
-from models.contact import Users, Preguntas, Requests, LogoutToken
+from flask import Blueprint, request, jsonify, make_response
+from models.contact import Users, Preguntas, Requests, LogoutToken, Messages
 from utils.db import db
-from werkzeug.exceptions import Unauthorized
 import logging 
-import os, jwt, bcrypt, datetime
-import time
-from functools import wraps
 import chat.functions as chat
 from routes.decorators import *
 querys = Blueprint("querys", __name__)
 
-
-@querys.route('/conversations', methods=['GET'])
-@user_token
-def get_conversations():
-    data=chat.gpt_conversations()
-    # Filter conversations by user
-    user_id = get_user_id()
-    if user_id != 1:
-        conversation = []
-        for conv in data['items']:
-            user_conversations = Preguntas.query.filter_by(user_id=user_id).all()
-            if conv['id'] in [c.id for c in user_conversations]:
-                conversation.append(conv)
-        data['items'] = conversation
-    return data, 200
+def message_to_dict(message):
+    return {"role": message.role, "content": message.content}
 @querys.after_request
 def monitor_messages(response):
     return monitoring(response)
+@querys.route('/conversations', methods=['GET'])
+@user_token
+def get_conversations():
+    user_id = get_user_id()
+
+    if user_id != 1:
+        user_conversations = Preguntas.query.filter_by(user_id=user_id).all()
+    else:
+        user_conversations = Preguntas.query.all()
+
+    conversations_data = []
+    for conversation in user_conversations:
+        conversation_id = conversation.id
+        title = conversation.title
+        date = conversation.date
+        messages = Messages.query.filter_by(pregunta_id=conversation_id).all()
+        messages_data = [message_to_dict(msg) for msg in messages]
+
+        conversations_data.append({
+            "id": conversation_id,
+            "title": title,
+            "date": date,
+            "messages": messages_data
+        })
+
+    return jsonify({"items": conversations_data}), 200
 
 @querys.route('/messages/<conversation_id>', methods=['GET'])
 @user_token
@@ -40,37 +49,40 @@ def get_messages(conversation_id):
     if not conversation_id:
         return jsonify({"error": "Missing data"}), 400
     else:
-        data=chat.gpt_conversation(conversation_id)
-        return data, 200
+        # Obtener las conversaciones de la base de datos
+        conversation = Preguntas.query.filter_by(id=conversation_id).first()
+        messages = Messages.query.filter_by(pregunta_id=conversation_id).all()
+        messages_data = [message_to_dict(msg) for msg in messages]
+
+        return jsonify({"conversation_id": conversation_id, "messages": messages_data}), 200
+
+
 
 @querys.route('/messages', methods=['POST'])
 @user_token
 def send_message():
-    user_id = get_user_id()
-    if user_id != 1:
-        user_conversations = Preguntas.query.filter_by(user_id=user_id).all()
-        if request.json['conversation_id'] not in [c.id for c in user_conversations]:
-            return jsonify({"error": "Not allowed"}), 403
-    if not request.json:
-        return jsonify({"error": "Missing data"}), 400
-    else:
-        conversation_id = request.json['conversation_id']
-        parent_message_id = request.json['parent_message_id']
-        message = request.json['message']
-        def send_data(line):
-            response = make_response(line + b'\n')
-            response.headers['Content-Type'] = 'text/plain'
-            response.headers['Cache-Control'] = 'no-cache'
-            response.headers['X-Accel-Buffering'] = 'no'
-            return response
-        chat.gpt_response(conversation_id, parent_message_id, message, send_data)
-        return jsonify({"message":"Procesamiento completo."}), 200
+    try:
+        user_id = get_user_id()
+        if user_id != 1:
+            user_conversations = Preguntas.query.filter_by(user_id=user_id).all()
+            if request.json['conversation_id'] not in [c.id for c in user_conversations]:
+                return jsonify({"error": "Not allowed"}), 403
 
-@querys.route('/metabase', methods=['GET'])
-@admin_token
-def get_metabase():
-    data = token_admin()
-    return jsonify({"url":data}), 200
+        if not request.json:
+            return jsonify({"error": "Missing data"}), 400
+        else:
+            conversation_id = request.json['conversation_id']
+            message = request.json['message']
+            response_json = chat.gpt_continue_conversation(conversation_id, message)
+
+            response = make_response(response_json.encode() + b'\n')
+
+            return response, 200
+    except Exception as e:
+        logging.exception(e)
+        return jsonify({"error": "Error processing request"}), 500
+
+
 
 @querys.route('/change-title', methods=['PUT'])
 @user_token
@@ -97,17 +109,13 @@ def new_conversation():
             return jsonify({"error": "Missing data"}), 400
         else:
             message = request.json['message']
-            def send_data(line):
-                response = make_response(line + b'\n')
-                response.headers['Content-Type'] = 'text/plain'
-                response.headers['Cache-Control'] = 'no-cache'
-                response.headers['X-Accel-Buffering'] = 'no'
-                return response
-            chat.gpt_new_conversation(message, send_data, store_conversation_id, current_id)
-            return jsonify({"message":"Procesamiento completo."}), 200
+            response_json = chat.gpt_new_conversation(message, current_id)
+            response = make_response(response_json.encode() + b'\n')
+            return response, 200
     except Exception as e:
         logging.exception(e)
         return jsonify({"error": "Error processing request"}), 500
+
 
 @querys.route('/conversations/<conversation_id>', methods=['DELETE'])
 @user_token
@@ -121,3 +129,9 @@ def delete_conversation(conversation_id):
         db.session.commit()
 
     return {'message': 'Delete conversation successful'}, 200
+
+@querys.route('/metabase', methods=['GET'])
+@admin_token
+def get_metabase():
+    data = token_admin()
+    return jsonify({"url":data}), 200

@@ -1,116 +1,100 @@
-import requests
 import os
+import sqlalchemy
 import uuid
 import json
+from models.contact import Messages, Preguntas
+from utils.db import db
+import openai
 
-# Models: text-davinci-002-render-sha gpt-4
+openai.api_key = os.environ['AUTH_TOKEN']
 
-base_url = "https://chat.openai.com/backend-api/"
-auth_token = os.environ['AUTH_TOKEN']
-puid_user = os.environ['PUID_USER']
-# headers = {
-#     f'authorization': f'Bearer {auth_token}',
-#     f'cookie': f'puid_user={puid_user}; token={cookie_token}',
-# }
+def api_request(model, messages, stream=False):
+    response = openai.ChatCompletion.create(
+        model=model,
+        messages=messages,
+        max_tokens=256,
+        temperature=0.7,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0.3,
+        stream=stream
+    )
+    
+    return response
 
-headers = {
-    "cookie": f"_puid={puid_user}",
-    "authorization": f"Bearer {auth_token}"
-}
+def gpt_new_conversation(initial_message, user_id):
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a helpful assistant."
+        },
+        {
+            "role": "user",
+            "content": initial_message
+        }
+    ]
+    response = api_request(model="gpt-3.5-turbo", messages=messages)
 
+    # Utiliza un bucle while para seguir intentando hasta que se genere un UUID único
+    cont = 0
+    while cont < 10:
+        try:
+            conversation_id = str(uuid.uuid4())
+            pregunta = Preguntas(id=conversation_id, user_id=user_id, deleted=False)
+            db.session.add(pregunta)
 
-def gpt_conversations():
-    url = base_url + "conversations"+"?offset=0&limit=100"
-    try:
-        response = requests.get(url, headers=headers)
-        print(response.json())
-        return response.json()
-    except Exception as e:
-        return {"error": str(e)}
+            # Crear y guardar objetos Messages para el mensaje inicial, el mensaje del sistema y la respuesta del asistente
+            system_msg = Messages(pregunta_id=conversation_id, role="system", content="You are a helpful assistant.")
+            initial_msg = Messages(pregunta_id=conversation_id, role="user", content=initial_message)
+            assistant_msg = Messages(pregunta_id=conversation_id, role="assistant", content=response['choices'][0]['message']['content'])
 
-def gpt_conversation(conversation_id):
-    url = base_url + f"conversation/{conversation_id}"
-    response = requests.get(url, headers=headers)
-    return response.json()
+            pregunta.messages.extend([system_msg, initial_msg, assistant_msg])
 
-def gpt_new_conversation(initial_message, callback, conversation_id_callback, user_id):
-    url = base_url + "conversation"
-    entered = False
-    uuid_01 = str(uuid.uuid4())
-    data = {
-        "action": "next",
-        "messages":
-        [
-            {
-                "author": {"role": "user"},
-                "role": "user",
-                "content": {
-                    "content_type": "text",
-                    "parts": [f"{initial_message}"]
-                }
-            }
-        ],
-        "parent_message_id": f"{uuid_01}",
-        "model": "text-davinci-002-render-sha"
-    }
-
-    response = requests.post(url, headers=headers, json=data, stream=True)
-
-    # Busca la variable "conversation_id" dentro del stream de datos y llama a la función "conversation_id_callback" con su valor
-    for line in response.iter_lines():
-        if line:
-            try:
-                text_str = line.decode('utf-8')
-                datos = json.loads(text_str.split("data: ")[1])
-                if 'conversation_id' in datos and not entered:
-                    entered = True
-                    conversation_id = datos['conversation_id']
-                    conversation_id_callback(conversation_id, user_id)
-            except:
-                pass
-            callback(line)
+            db.session.commit()
+            break  # Sal del bucle si la inserción en la base de datos es exitosa
+        except sqlalchemy.exc.IntegrityError:
+            db.session.rollback()
+            cont += 1
+            continue  # Inténtalo de nuevo si el UUID ya existe en la base de datos
+    response_json = json.dumps(response)
+    return response_json
 
 
+def gpt_continue_conversation(conversation_id, message):
+    conversation = Preguntas.query.filter_by(id=conversation_id).first()
+    if not conversation:
+        return
 
-def gpt_response(conversation_id, parent_message_id, message, callback):
+    messages = Messages.query.filter_by(pregunta_id=conversation_id).all()
+    messages_data = [{"role": msg.role, "content": msg.content} for msg in messages]
 
-    url = base_url + f"conversation"
-    data = {
-        "action": "next",
-        "messages": [
-            {"author":
-             {"role": "user"},
-                "role": "user",
-                "content":
-             {"content_type": "text", "parts":
-                 [f"{message}"]
-              }
-             }
-        ],
-        "conversation_id": f"{conversation_id}",
-        "parent_message_id": f"{parent_message_id}",
-        "model": "text-davinci-002-render-sha"
-    }
-    response = requests.post(url, headers=headers, json=data, stream=True)
+    messages_data.append({"role": "user", "content": message})
+    message_obj = Messages(pregunta_id=conversation_id, role='user', content=message)
+    response = api_request(model="gpt-3.5-turbo", messages=messages_data)
 
-    # Llamar a la función de devolución de llamada con cada línea recibida
-    for line in response.iter_lines():
-        if line:
-            callback(line)
+    choice = response['choices'][0]
+    message_obj = Messages(pregunta_id=conversation_id, role='assistant', content=choice['message']['content'])
+    db.session.add(message_obj)
+    db.session.commit()
+
+    response_json = json.dumps(response)
+    return response_json
+
 
 def gpt_delete_conversation(conversation_id):
-    url = base_url + f"conversation/{conversation_id}"
-    data = {
-        "is_visible": "false"
-    }
-    response = requests.patch(url, headers=headers, json=data)
-    return response.json()
-
+    conversation = Preguntas.query.filter_by(id=conversation_id).first()
+    if conversation:
+        conversation.deleted = True
+        db.session.commit()
+        return {"status": "success", "message": "Conversation marked as deleted"}
+    else:
+        return {"status": "error", "message": "Conversation not found"}
 
 def gpt_change_title(conversation_id, title):
-    url = base_url + f"conversation/{conversation_id}"
-    data = {
-        "title": f"{title}"
-    }
-    response = requests.patch(url, headers=headers, json=data)
-    return response.json()
+    conversation = Preguntas.query.filter_by(id=conversation_id).first()
+    if conversation:
+        conversation.title = title
+        db.session.commit()
+        return {"status": "success", "message": "Title changed successfully"}
+    else:
+        return {"status": "error", "message": "Conversation not found"}

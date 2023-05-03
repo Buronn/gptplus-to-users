@@ -22,6 +22,11 @@ const Home = () => {
                 const res = await api.getConversations();
                 const data = await res.json();
                 if (data.items) {
+                    for (let i = 0; i < data.items.length; i++) {
+                        if (data.items[i].title === null) {
+                            data.items[i].title = 'Untitled';
+                        }
+                    }
                     setChatList(data.items);
                 }
             }
@@ -217,6 +222,12 @@ const Home = () => {
         const res2 = await api.getConversations();
         const data2 = await res2.json();
         if (data2.items) {
+            console.log(data2.items);
+            for (let i = 0; i < data2.items.length; i++) {
+                if (data2.items[i].title === null) {
+                    data2.items[i].title = 'Untitled';
+                }
+            }
             setChatList(data2.items);
             getMessages(data2.items[0].id);
         }
