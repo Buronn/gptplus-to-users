@@ -1,84 +1,109 @@
 import os
-import sqlalchemy
-import uuid
 import json
-from models.contact import Messages, Preguntas
-from utils.db import db
+import uuid
+import sqlalchemy
+import spacy
 import openai
 
+from models.contact import Messages, Preguntas, Tokens
+from utils.db import db
+
+nlp = spacy.load("es_core_news_sm")
 openai.api_key = os.environ['AUTH_TOKEN']
+SYSTEM_MESSAGE = "Sigues las siguientes reglas para responder:\n" \
+                    "1. Sé conciso\n" \
+                    "2. Si te piden código, no expliques, solo envía el código\n"
 
 def api_request(model, messages, stream=False):
     response = openai.ChatCompletion.create(
         model=model,
         messages=messages,
-        max_tokens=256,
-        temperature=0.7,
-        top_p=1,
-        frequency_penalty=0,
-        presence_penalty=0.3,
-        stream=stream
+        temperature=0.5,
+        stream=stream,
     )
-    
     return response
 
-def gpt_new_conversation(initial_message, user_id):
+
+def extract_keywords(text):
+    keywords = []
+    doc = nlp(text)
+    for token in doc:
+        if token.is_alpha and (token.pos_ in ("NOUN", "PROPN", "ADJ", "VERB")):
+            keywords.append(token.lemma_.lower())
+    return keywords
+
+
+def gpt_new_conversation(initial_message, user_id, system_message=SYSTEM_MESSAGE, model_name="gpt-3.5-turbo"):
     messages = [
-        {
-            "role": "system",
-            "content": "You are a helpful assistant."
-        },
-        {
-            "role": "user",
-            "content": initial_message
-        }
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": initial_message}
     ]
-    response = api_request(model="gpt-3.5-turbo", messages=messages)
+    response = api_request(model=model_name, messages=messages)
 
-    # Utiliza un bucle while para seguir intentando hasta que se genere un UUID único
-    cont = 0
-    while cont < 10:
+    conversation_id = str(uuid.uuid4())
+    for _ in range(10):
         try:
-            conversation_id = str(uuid.uuid4())
-            pregunta = Preguntas(id=conversation_id, user_id=user_id, deleted=False)
-            db.session.add(pregunta)
+            print("Tokens used in", conversation_id, ":", "\n", 
+                  "\t Prompt", response['usage']['prompt_tokens'], "\n", 
+                  "\t Completion Tokens", response['usage']['completion_tokens'], "\n",
+                  "\t Total Tokens", response['usage']['total_tokens'])
 
-            # Crear y guardar objetos Messages para el mensaje inicial, el mensaje del sistema y la respuesta del asistente
-            system_msg = Messages(pregunta_id=conversation_id, role="system", content="You are a helpful assistant.")
+            pregunta = Preguntas(id=conversation_id, user_id=user_id, deleted=False)
+            tokens = Tokens(pregunta_id=conversation_id, token=response['usage']['total_tokens'])
+
+            system_msg = Messages(pregunta_id=conversation_id, role="system", content=system_message)
             initial_msg = Messages(pregunta_id=conversation_id, role="user", content=initial_message)
             assistant_msg = Messages(pregunta_id=conversation_id, role="assistant", content=response['choices'][0]['message']['content'])
-
+            
             pregunta.messages.extend([system_msg, initial_msg, assistant_msg])
 
+            db.session.add_all([pregunta, tokens, system_msg, initial_msg, assistant_msg])
             db.session.commit()
-            break  # Sal del bucle si la inserción en la base de datos es exitosa
+            break
         except sqlalchemy.exc.IntegrityError:
             db.session.rollback()
-            cont += 1
-            continue  # Inténtalo de nuevo si el UUID ya existe en la base de datos
+            conversation_id = str(uuid.uuid4())
+
     response_json = json.dumps(response)
     return response_json
 
 
-def gpt_continue_conversation(conversation_id, message):
+def gpt_continue_conversation(conversation_id, message, model_name="gpt-3.5-turbo", economic=False):
     conversation = Preguntas.query.filter_by(id=conversation_id).first()
     if not conversation:
         return
 
     messages = Messages.query.filter_by(pregunta_id=conversation_id).all()
     messages_data = [{"role": msg.role, "content": msg.content} for msg in messages]
-
     messages_data.append({"role": "user", "content": message})
     message_obj = Messages(pregunta_id=conversation_id, role='user', content=message)
-    response = api_request(model="gpt-3.5-turbo", messages=messages_data)
+    db.session.add(message_obj)
+
+    recent_conversation = [{"role": msg["role"], "content": msg["content"]} for msg in messages_data[-2:]]
+    prompt = recent_conversation
+
+    if economic:
+        keywords = []
+        for msg in messages_data[:-2]:  # Excluir las dos últimas interacciones (las más recientes)
+            keywords.extend(extract_keywords(msg["content"]))
+        keywords_text = "Palabras clave utilizadas anteriormente: " + ", ".join(set(keywords)) + "."
+        prompt = [{"role": "assistant", "content": keywords_text}] + recent_conversation
+
+    response = api_request(model=model_name, messages=prompt)
 
     choice = response['choices'][0]
+
+    token_usage = Tokens(pregunta_id=conversation_id, token=response['usage']['total_tokens'])
+    db.session.add(token_usage)
     message_obj = Messages(pregunta_id=conversation_id, role='assistant', content=choice['message']['content'])
     db.session.add(message_obj)
+
     db.session.commit()
 
     response_json = json.dumps(response)
     return response_json
+
+
 
 
 def gpt_delete_conversation(conversation_id):

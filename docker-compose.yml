@@ -36,12 +36,12 @@ services:
     restart: always
     volumes:
       - db_data:/var/lib/postgresql/data
-  # metabase:
-  #   ports:
-  #       - '12345:3000'
-  #   container_name: metabase
-  #   image: metabase/metabase
-  #   volumes:
-  #     - ./metabase/metabase.db:/metabase.db
+  metabase:
+    ports:
+        - '12345:3000'
+    container_name: metabase
+    image: metabase/metabase
+    volumes:
+      - ./metabase/metabase.db:/metabase.db
 volumes:
   db_data:

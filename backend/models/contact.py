@@ -31,18 +31,17 @@ class Preguntas(db.Model):
     title = db.Column(db.String, nullable=True, default="Untitled")
     date = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow)
 
-    def __init__(self, id, user_id, deleted):
-        self.id = id
-        self.user_id = user_id
-        self.deleted = deleted
-        self.date = datetime.datetime.now(pytz.utc).astimezone(chile_tz)
-
-    def __repr__(self):
-        return f'<Pregunta {self.id}>'
-
 class Messages(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     pregunta_id = db.Column(db.String, db.ForeignKey('preguntas.id'))
     role = db.Column(SQLAlchemyEnum('system', 'user', 'assistant', name='role_enum'), nullable=False)
     content = db.Column(db.Text, nullable=False)
+    date = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow)
     pregunta = db.relationship('Preguntas', backref=db.backref('messages', lazy=True))
+
+class Tokens(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    pregunta_id = db.Column(db.String, db.ForeignKey('preguntas.id'))
+    token = db.Column(db.Integer, nullable=False, default=0)
+    date = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow)
+    pregunta = db.relationship('Preguntas', backref=db.backref('tokens', lazy=True))

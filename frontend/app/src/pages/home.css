@@ -508,7 +508,6 @@ a.add img {
 .msg-body ul li.repaly {
   display: block;
   width: 100%;
-  text-align: right;
   position: relative;
 }
 
@@ -517,16 +516,16 @@ a.add img {
   clear: both;
   content: "";
   position: absolute;
-  bottom: 15px;
-  right: -7px;
+  top: -6px;
+  left: -7px;
   width: 0;
   height: 0;
   border-style: solid;
   border-width: 0 12px 15px 12px;
   border-color: transparent transparent #3c439fdb transparent;
-  -webkit-transform: rotate(37deg);
-  -ms-transform: rotate(37deg);
-  transform: rotate(37deg);
+  -webkit-transform: rotate(-37deg);
+  -ms-transform: rotate(-37deg);
+  transform: rotate(-37deg);
 }
 
 .msg-body ul li.repaly p {

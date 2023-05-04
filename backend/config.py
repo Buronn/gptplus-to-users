@@ -12,4 +12,3 @@ port = os.environ['POSTGRES_PORT']
 database = os.environ['POSTGRES_DB']
 
 DATABASE_CONNECTION_URI = f'postgresql+psycopg2://{user}:{password}@{host}/{database}'
-print(DATABASE_CONNECTION_URI)

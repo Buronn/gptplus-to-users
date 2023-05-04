@@ -7,7 +7,10 @@ from routes.decorators import *
 querys = Blueprint("querys", __name__)
 
 def message_to_dict(message):
-    return {"role": message.role, "content": message.content}
+    # Ignore if role is system
+    if message.role == "system":
+        return None
+    return {"role": message.role, "content": message.content, "date": message.date}
 @querys.after_request
 def monitor_messages(response):
     return monitoring(response)
@@ -23,6 +26,8 @@ def get_conversations():
 
     conversations_data = []
     for conversation in user_conversations:
+        if conversation.deleted:
+            continue
         conversation_id = conversation.id
         title = conversation.title
         date = conversation.date
@@ -51,12 +56,30 @@ def get_messages(conversation_id):
     else:
         # Obtener las conversaciones de la base de datos
         conversation = Preguntas.query.filter_by(id=conversation_id).first()
+        title = conversation.title
+        # Is deleted?
+        if conversation.deleted:
+            return jsonify({"error": "Conversation deleted"}), 403
         messages = Messages.query.filter_by(pregunta_id=conversation_id).all()
+        # Obtener role, content y date
         messages_data = [message_to_dict(msg) for msg in messages]
+        return jsonify({"conversation_id": conversation_id, "messages": messages_data, "title": title}), 200
 
-        return jsonify({"conversation_id": conversation_id, "messages": messages_data}), 200
-
-
+@querys.route('/conversations', methods=['POST'])
+@user_token
+def new_conversation():
+    try:
+        current_id = get_user_id()
+        if not request.json:
+            return jsonify({"error": "Missing data"}), 400
+        else:
+            message = request.json['message']
+            response_json = chat.gpt_new_conversation(message, current_id) # TODO: Add system message and model
+            response = make_response(response_json.encode() + b'\n')
+            return response, 200
+    except Exception as e:
+        logging.exception(e)
+        return jsonify({"error": "Error processing request"}), 500
 
 @querys.route('/messages', methods=['POST'])
 @user_token
@@ -73,7 +96,7 @@ def send_message():
         else:
             conversation_id = request.json['conversation_id']
             message = request.json['message']
-            response_json = chat.gpt_continue_conversation(conversation_id, message)
+            response_json = chat.gpt_continue_conversation(conversation_id, message) # TODO: Add model
 
             response = make_response(response_json.encode() + b'\n')
 
@@ -81,8 +104,6 @@ def send_message():
     except Exception as e:
         logging.exception(e)
         return jsonify({"error": "Error processing request"}), 500
-
-
 
 @querys.route('/change-title', methods=['PUT'])
 @user_token
@@ -100,21 +121,7 @@ def change_title():
         chat.gpt_change_title(conversation_id, title)
     return {'message': 'Change title successful'}, 200
 
-@querys.route('/conversations', methods=['POST'])
-@user_token
-def new_conversation():
-    try:
-        current_id = get_user_id()
-        if not request.json:
-            return jsonify({"error": "Missing data"}), 400
-        else:
-            message = request.json['message']
-            response_json = chat.gpt_new_conversation(message, current_id)
-            response = make_response(response_json.encode() + b'\n')
-            return response, 200
-    except Exception as e:
-        logging.exception(e)
-        return jsonify({"error": "Error processing request"}), 500
+
 
 
 @querys.route('/conversations/<conversation_id>', methods=['DELETE'])
@@ -124,9 +131,6 @@ def delete_conversation(conversation_id):
         return jsonify({"error": "Missing data"}), 400
     else:
         chat.gpt_delete_conversation(conversation_id)
-        conversation = Preguntas.query.filter_by(id=conversation_id).first()
-        db.session.delete(conversation)
-        db.session.commit()
 
     return {'message': 'Delete conversation successful'}, 200
 
